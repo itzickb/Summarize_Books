@@ -8,6 +8,14 @@ import re  # חיפוש טקסט באמצעות Regex
 from openai import OpenAI, RateLimitError, APIError  # לקוח OpenAI וחריגות API
 
 
+def reverse_text(s: str) -> str:
+    """
+    הופך את סדר התווים במחרוזת.
+    מתאים להצגה בטרמינלים שלא תומכים ב־RTL.
+    """
+    return s[::-1]
+
+
 # --------------------------------------------------
 # 1. אתחול הלקוח של OpenAI
 # --------------------------------------------------
@@ -19,7 +27,7 @@ def init_client() -> OpenAI:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         # אם לא הוגדר מפתח API, מפסיקים ורוקעים שגיאה
-        raise RuntimeError("יש להגדיר את משתנה הסביבה OPENAI_API_KEY")
+        raise RuntimeError(reverse_text("יש להגדיר את משתנה הסביבה OPENAI_API_KEY"))
     # מחזירים מופע לקוח עם המפתח
     return OpenAI(api_key=api_key)
 
@@ -77,7 +85,7 @@ def main():
     client = init_client()
 
     # 2. קבלת שם הספר מהמשתמש
-    book_title = input("הזן את שם הספר: ").strip()
+    book_title = input(f"{reverse_text("הזן את שם הספר")} :").strip()
 
     # 3. בדיקת קיום הספר ב-ChatGPT
     knows = ask_chat(
@@ -85,7 +93,7 @@ def main():
     )
     if knows.lower().startswith("לא"):
         # אם ChatGPT לא מכיר את הספר, נסיים את הריצה
-        print(f"ChatGPT מציין שאינו מכיר את “{book_title}”. יוצא.")
+        print(reverse_text(f"ChatGPT מציין שאינו מכיר את “{book_title}”. יוצא."))
         return
 
     # 4. בקשה למספר הפרקים (מודגש: רק מספר, בלי טקסט נוסף)
@@ -97,14 +105,14 @@ def main():
     m = re.search(r"\d+", reply)
     if not m:
         # אם לא נמצא מספר – זורקים שגיאה
-        raise ValueError(f"לא נמצאה כמות פרקים בתשובה: {reply!r}")
+        raise ValueError(reverse_text(f"לא נמצאה כמות פרקים בתשובה: {reply!r}"))
     chapter_count = int(m.group())
-    print(f"נמצאו {chapter_count} פרקים.")
+    print(reverse_text(f"נמצאו {chapter_count} פרקים."))
 
     # 5. סיכום כל פרק
     summaries = []  # רשימה של tuples: (מספר פרק, טקסט הסיכום)
     for i in range(1, chapter_count + 1):
-        print(f"מסכם פרק {i}/{chapter_count}…")
+        print(reverse_text(f"מסכם פרק {i}/{chapter_count}…"))
         prompt = (
             f"תסכם בעברית את פרק מספר {i} מהספר “{book_title}” "
             "באופן הכי מפורט שניתן."
@@ -129,7 +137,7 @@ def main():
             f.write(text + "\n\n")
 
     # 7. הודעה על סיום
-    print(f"הסיכומים נכתבו לקובץ: '{out_path}'")
+    print(reverse_text(f"הסיכומים נכתבו לקובץ: '{out_path}'"))
 
 
 if __name__ == "__main__":
