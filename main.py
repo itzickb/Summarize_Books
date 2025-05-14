@@ -112,7 +112,7 @@ def main():
     # 5. סיכום כל פרק
     summaries = []  # רשימה של tuples: (מספר פרק, טקסט הסיכום)
     for i in range(1, chapter_count + 1):
-        print(reverse_text(f"מסכם פרק {i}/{chapter_count}…"))
+        print(f"{reverse_text(f"מסכם פרק ")}{i}\{chapter_count}…")
         prompt = (
             f"תסכם בעברית את פרק מספר {i} מהספר “{book_title}” "
             "באופן הכי מפורט שניתן."
@@ -137,7 +137,7 @@ def main():
             f.write(text + "\n\n")
 
     # 7. הודעה על סיום
-    print(reverse_text(f"הסיכומים נכתבו לקובץ: '{out_path}'"))
+    print(f"{reverse_text(f"הסיכומים נכתבו לקובץ: '")}{out_path}'")
 
 
 if __name__ == "__main__":
