@@ -107,12 +107,12 @@ def main():
         # אם לא נמצא מספר – זורקים שגיאה
         raise ValueError(reverse_text(f"לא נמצאה כמות פרקים בתשובה: {reply!r}"))
     chapter_count = int(m.group())
-    print(reverse_text(f"נמצאו {chapter_count} פרקים."))
+    print(f"{reverse_text(f"נמצאו ")}{chapter_count}{reverse_text(f" פרקים.")})
 
     # 5. סיכום כל פרק
     summaries = []  # רשימה של tuples: (מספר פרק, טקסט הסיכום)
     for i in range(1, chapter_count + 1):
-        print(f"{reverse_text(f"מסכם פרק ")}{i}\{chapter_count}…")
+        print(f"{reverse_text(f"מסכם פרק ")}{i}/{chapter_count}…")
         prompt = (
             f"תסכם בעברית את פרק מספר {i} מהספר “{book_title}” "
             "באופן הכי מפורט שניתן."
