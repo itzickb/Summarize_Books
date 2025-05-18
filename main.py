@@ -107,12 +107,23 @@ def main():
         # אם לא נמצא מספר – זורקים שגיאה
         raise ValueError(reverse_text(f"לא נמצאה כמות פרקים בתשובה: {reply!r}"))
     chapter_count = int(m.group())
-    print(f"{reverse_text(f"נמצאו ")}{chapter_count}{reverse_text(f" פרקים.")})
+    print(f"{reverse_text(f"נמצאו ")}{chapter_count}{reverse_text(f" פרקים.")}")
 
     # 5. סיכום כל פרק
-    summaries = []  # רשימה של tuples: (מספר פרק, טקסט הסיכום)
+    summaries = []  # רשימה של tuples: (מספר פרק, טקסט הסיכום, כותרת הפרק)
+    titles = []  # רשימה של כותרות הפרקים
     for i in range(1, chapter_count + 1):
         print(f"{reverse_text(f"מסכם פרק ")}{i}/{chapter_count}…")
+
+        # בקשה לכותרת הפרק
+        summary_prompt = (
+            f"תסכם בעברית את פרק מספר {i} מהספר “{book_title}” " "בשורה אחת."
+        )
+        chapter_title = ask_chat(client, summary_prompt)  # קבלת סיכום בשורה אחת
+
+        # שומרים את כותרת הפרק
+        titles.append(chapter_title)
+
         prompt = (
             f"תסכם בעברית את פרק מספר {i} מהספר “{book_title}” "
             "באופן הכי מפורט שניתן."
@@ -121,7 +132,9 @@ def main():
         chapter_text = ask_chat(
             client, prompt, system="You are an expert Hebrew-language summarizer."
         )
-        summaries.append((i, chapter_text))
+        summaries.append(
+            (i, chapter_title, chapter_text)
+        )  # שומרים את המספר, הכותרת והסיכום
 
     # 6. כתיבה לקובץ טקסט
     # מחליפים תווים בעייתיים בשם הקובץ
@@ -132,8 +145,8 @@ def main():
         f.write(f"סיכומים של “{book_title}”\n")
         f.write(f"נוצר ב־{time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
         # כותבים סיכום לכל פרק
-        for i, text in summaries:
-            f.write(f"=== פרק {i} ===\n")
+        for i, title, text in summaries:
+            f.write(f"=== פרק {i}: {title} ===\n")
             f.write(text + "\n\n")
 
     # 7. הודעה על סיום
