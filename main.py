@@ -1,156 +1,175 @@
-#!/usr/bin/env python
-# main.py
-# תוכנית לסיכום פרקי ספר באמצעות קריאות ל-ChatGPT
+# Program to summarize book chapters using calls to ChatGPT
 
-import os  # גישה למשתני סביבה וקבצים
-import time  # זמן שינה בין ניסיונות חוזרים
-import re  # חיפוש טקסט באמצעות Regex
-from openai import OpenAI, RateLimitError, APIError  # לקוח OpenAI וחריגות API
-
-
-def reverse_text(s: str) -> str:
-    """
-    הופך את סדר התווים במחרוזת.
-    מתאים להצגה בטרמינלים שלא תומכים ב־RTL.
-    """
-    return s[::-1]
+import os  # Access to environment variables and files
+import time  # Sleep time between retries
+import re  # Text searching using Regex
+from openai import OpenAI, RateLimitError, APIError  # OpenAI client and API exceptions
 
 
 # --------------------------------------------------
-# 1. אתחול הלקוח של OpenAI
+# 1. Initialize the OpenAI client
 # --------------------------------------------------
 def init_client() -> OpenAI:
     """
-    מאתחל את מופע ה-OpenAI עם מפתח מהמשתמש
-    בודק שהמשתנה OPENAI_API_KEY מוגדר, אחרת קורא לשגיאה
+    Initializes an OpenAI instance with a key from the user
+    Checks that the OPENAI_API_KEY environment variable is set, otherwise raises an error
     """
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        # אם לא הוגדר מפתח API, מפסיקים ורוקעים שגיאה
-        raise RuntimeError(reverse_text("יש להגדיר את משתנה הסביבה OPENAI_API_KEY"))
-    # מחזירים מופע לקוח עם המפתח
+        # If the API key is not set, stop and raise an error
+        raise RuntimeError("The environment variable OPENAI_API_KEY must be set")
+    # Return a client instance with the key
     return OpenAI(api_key=api_key)
 
 
 # --------------------------------------------------
-# 2. קריאה ל־Chat Completion עם retry על קצב ושגיאות שרת
+# 2. Call to Chat Completion with retry on rate limits and server errors
 # --------------------------------------------------
 def ask_chat(
     client: OpenAI, prompt: str, system: str = "You are a helpful assistant."
-) -> str:
+) -> tuple[str, int]:
     """
-    שולח בקשה ל-ChatGPT ומטפל בניסיונות חוזרים
-    - RateLimitError (429): retry עם exponential backoff
-    - APIError (5xx): retry אם שגיאת שרת
-    sonst: מעביר הלאה
+    Sends a request to ChatGPT and handles retries
+    - RateLimitError (429): retry with exponential backoff
+    - APIError (5xx): retry if server error
+    otherwise: propagate the error
     """
-    backoff = 1  # זמן התחלה בשניות לחזרה על בקשה
+    backoff = 1  # Initial time in seconds to retry the request
     while True:
         try:
-            # קריאה לפונקציית יצירת completion
+            # Call the completion creation function
             resp = client.chat.completions.create(
-                model="gpt-4o-mini",  # בחירת מודל
+                model="gpt-4o",  # Model selection
                 messages=[
                     {"role": "system", "content": system},
                     {"role": "user", "content": prompt},
                 ],
-                temperature=0.7,  # רמת גיוון בתשובות
+                temperature=0.7,  # Level of diversity in responses
             )
-            # מחזירים את תוכן ההודעה הראשונה
-            return resp.choices[0].message.content.strip()
+            token_count = (
+                resp.usage.total_tokens
+            )  # Get the token count from the response
+            # Return the content of the first message and token count
+            return resp.choices[0].message.content.strip(), token_count
 
         except RateLimitError:
-            # במידה והגענו למגבלת קצב, נחכה וננסה שוב
+            # If we hit the rate limit, wait and try again
             print(f"Rate limit hit; retrying in {backoff}s...")
             time.sleep(backoff)
             backoff = min(backoff * 2, 60)
 
         except APIError as e:
-            # אם מדובר בשגיאת שרת 5xx, נחזור על הבקשה
+            # If it's a server error 5xx, retry the request
             status = getattr(e, "http_status", None)
             if status and 500 <= status < 600:
                 print(f"Server error {status}; retrying in {backoff}s...")
                 time.sleep(backoff)
                 backoff = min(backoff * 2, 60)
             else:
-                # לכל שגיאה אחרת, תעבור הלאה לשגיאה חיצונית
+                # For any other error, propagate the error
                 raise
 
 
 # --------------------------------------------------
-# 3. הלוגיקה הראשית
+# 3. Main logic
 # --------------------------------------------------
 def main():
-    # 1. אתחול הלקוח
+    # 1. Initialize the client
     client = init_client()
 
-    # 2. קבלת שם הספר מהמשתמש
-    book_title = input(f"{reverse_text("הזן את שם הספר")} :").strip()
+    total_tokens = 0  # Initialize total token count
 
-    # 3. בדיקת קיום הספר ב-ChatGPT
+    # 2. Get the book title from the user
+    book_title = input(f"Enter the book title: ").strip()
+
+    # 3. Check if ChatGPT knows the book
     knows = ask_chat(
-        client, f"אתה מכיר את הספר שנקרא “{book_title}”? השב פשוט כן או לא."
+        client,
+        f"Do you know the book titled “{book_title}”? Please answer simply yes or no.",
     )
-    if knows.lower().startswith("לא"):
-        # אם ChatGPT לא מכיר את הספר, נסיים את הריצה
-        print(reverse_text(f"ChatGPT מציין שאינו מכיר את “{book_title}”. יוצא."))
+    if knows[0].lower().startswith("no"):
+        # If ChatGPT does not know the book, exit the run
+        print(f"ChatGPT states it does not know the book “{book_title}”. Exiting.")
         return
 
-    # 4. בקשה למספר הפרקים (מודגש: רק מספר, בלי טקסט נוסף)
+    total_tokens += knows[1]
+
+    # NEW: Question about translating the book
+    can_translate = ask_chat(
+        client,
+        f"Can you summarize the book “{book_title}”? Please answer with 'yes' or 'no'.",
+    )
+    if "no" in can_translate[0].lower():
+        print(f"There is a copyright issue with the book “{book_title}”. Exiting.")
+        return
+
+    total_tokens += can_translate[1]
+
+    # 4. Request the number of chapters (emphasized: only a number, no additional text)
     reply = ask_chat(
         client,
-        f"כמה פרקים יש בספר “{book_title}”? אנא השב **רק** במספר שלם (למשל: 24), בלי טקסט נוסף.",
+        f"How many chapters are in the book “{book_title}”? Please respond **only** with a whole number (e.g., 24), without additional text.",
     )
-    # מוצאים את המספר הראשון בתשובה
-    m = re.search(r"\d+", reply)
+    # Extract the first number from the response
+    m = re.search(r"\d+", reply[0])
     if not m:
-        # אם לא נמצא מספר – זורקים שגיאה
-        raise ValueError(reverse_text(f"לא נמצאה כמות פרקים בתשובה: {reply!r}"))
+        # If no number is found – raise an error
+        raise ValueError(f"No chapter count found in the response: {reply!r}")
     chapter_count = int(m.group())
-    print(f"{reverse_text(f"נמצאו ")}{chapter_count}{reverse_text(f" פרקים.")}")
+    print(f"{f"Found "}{chapter_count}{f" chapters."}")
 
-    # 5. סיכום כל פרק
-    summaries = []  # רשימה של tuples: (מספר פרק, טקסט הסיכום, כותרת הפרק)
-    titles = []  # רשימה של כותרות הפרקים
+    # 5. Summarize each chapter
+    summaries = (
+        []
+    )  # List of tuples: (chapter number, summary text, chapter title, token count)
+    titles = []  # List of chapter titles
+
     for i in range(1, chapter_count + 1):
-        print(f"{reverse_text(f"מסכם פרק ")}{i}/{chapter_count}…")
+        print(f"{f"Summarizing chapter "}{i}/{chapter_count}…")
 
-        # בקשה לכותרת הפרק
-        summary_prompt = (
-            f"תסכם בעברית את פרק מספר {i} מהספר “{book_title}” " "בשורה אחת."
-        )
-        chapter_title = ask_chat(client, summary_prompt)  # קבלת סיכום בשורה אחת
+        # Request the chapter title
+        summary_prompt = f"Summarize in Hebrew chapter number {i} from the book “{book_title}” in one line."
+        chapter_title, title_tokens = ask_chat(
+            client, summary_prompt
+        )  # Get a one-line summary
+        total_tokens += title_tokens  # Add title tokens to total
 
-        # שומרים את כותרת הפרק
+        # Save the chapter title
         titles.append(chapter_title)
 
         prompt = (
-            f"תסכם בעברית את פרק מספר {i} מהספר “{book_title}” "
-            "באופן הכי מפורט שניתן."
+            f"Summarize in Hebrew, as detailed and comprehensive as possible, chapter number {i} from the book “{book_title}”. "
+            "Include specific examples from the text, analysis of key points, and additional elaborations to clarify every concept or idea until the final summary."
         )
-        # מבצעים קריאה חוזרת ל-ask_chat עם system מתאים
-        chapter_text = ask_chat(
+        chapter_text, chapter_tokens = ask_chat(
             client, prompt, system="You are an expert Hebrew-language summarizer."
         )
+        total_tokens += chapter_tokens  # Add chapter tokens to total
         summaries.append(
-            (i, chapter_title, chapter_text)
-        )  # שומרים את המספר, הכותרת והסיכום
+            (
+                i,
+                chapter_title,
+                chapter_text,
+                chapter_tokens,
+            )  # Save the number, title, summary, and token count
+        )
 
-    # 6. כתיבה לקובץ טקסט
-    # מחליפים תווים בעייתיים בשם הקובץ
+    # 6. Write to a text file
+    # Replace problematic characters in the filename
     safe_name = "".join(c if c.isalnum() or c in " _-" else "_" for c in book_title)
     out_path = f"{safe_name}_summaries.txt"
     with open(out_path, "w", encoding="utf-8") as f:
-        # כותרת כללית ותאריך יצירה
-        f.write(f"סיכומים של “{book_title}”\n")
-        f.write(f"נוצר ב־{time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-        # כותבים סיכום לכל פרק
-        for i, title, text in summaries:
-            f.write(f"=== פרק {i}: {title} ===\n")
+        # General title and creation date
+        f.write(f"Summaries of “{book_title}”\n")
+        f.write(f"Created on {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        # Write the summary for each chapter
+        for i, title, text, chapter_tokens in summaries:
+            f.write(f"=== Chapter {i}: {title} (Tokens: {chapter_tokens}) ===\n")
             f.write(text + "\n\n")
 
-    # 7. הודעה על סיום
-    print(f"{reverse_text(f"הסיכומים נכתבו לקובץ: '")}{out_path}'")
+    # 7. Message on completion
+    print(f"{f"The summaries have been written to the file: '"}{out_path}'")
+    print(f"Total tokens used: {total_tokens}")  # Print total tokens used
 
 
 if __name__ == "__main__":
