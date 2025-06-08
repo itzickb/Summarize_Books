@@ -11,8 +11,9 @@ from openai import OpenAI, RateLimitError, APIError  # OpenAI client and API exc
 # --------------------------------------------------
 def init_client() -> OpenAI:
     """
-    Initializes an OpenAI instance with a key from the user
-    Checks that the OPENAI_API_KEY environment variable is set, otherwise raises an error
+    Initializes an OpenAI instance with a key from the user.
+    Checks that the OPENAI_API_KEY environment variable is set; otherwise, raises an error.
+    Returns an OpenAI client instance.
     """
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
@@ -29,10 +30,11 @@ def ask_chat(
     client: OpenAI, prompt: str, system: str = "You are a helpful assistant."
 ) -> tuple[str, int]:
     """
-    Sends a request to ChatGPT and handles retries
-    - RateLimitError (429): retry with exponential backoff
-    - APIError (5xx): retry if server error
-    otherwise: propagate the error
+    Sends a request to ChatGPT and handles retries for rate limits and server errors.
+    - RateLimitError (429): retry with exponential backoff.
+    - APIError (5xx): retry if server error.
+    Otherwise, propagate the error.
+    Returns a tuple containing the response content and the token count.
     """
     backoff = 1  # Initial time in seconds to retry the request
     while True:
@@ -55,16 +57,16 @@ def ask_chat(
         except RateLimitError:
             # If we hit the rate limit, wait and try again
             print(f"Rate limit hit; retrying in {backoff}s...")
-            time.sleep(backoff)
-            backoff = min(backoff * 2, 60)
+            time.sleep(backoff)  # Wait for the backoff period
+            backoff = min(backoff * 2, 60)  # Exponential backoff, max 60 seconds
 
         except APIError as e:
             # If it's a server error 5xx, retry the request
             status = getattr(e, "http_status", None)
             if status and 500 <= status < 600:
                 print(f"Server error {status}; retrying in {backoff}s...")
-                time.sleep(backoff)
-                backoff = min(backoff * 2, 60)
+                time.sleep(backoff)  # Wait for the backoff period
+                backoff = min(backoff * 2, 60)  # Exponential backoff, max 60 seconds
             else:
                 # For any other error, propagate the error
                 raise
@@ -74,13 +76,20 @@ def ask_chat(
 # 3. Main logic
 # --------------------------------------------------
 def main():
+    """
+    Main function to execute the book summarization process.
+    - Initializes the OpenAI client.
+    - Prompts the user for the book title and checks if ChatGPT knows the book.
+    - Requests the number of chapters and summarizes each chapter.
+    - Writes the summaries to a text file.
+    """
     # 1. Initialize the client
-    client = init_client()
+    client = init_client()  # Create an instance of the OpenAI client
 
     total_tokens = 0  # Initialize total token count
 
     # 2. Get the book title from the user
-    book_title = input(f"Enter the book title: ").strip()
+    book_title = input(f"Enter the book title: ").strip()  # Prompt user for book title
 
     # 3. Check if ChatGPT knows the book
     knows = ask_chat(
@@ -90,9 +99,9 @@ def main():
     if knows[0].lower().startswith("no"):
         # If ChatGPT does not know the book, exit the run
         print(f"ChatGPT states it does not know the book “{book_title}”. Exiting.")
-        return
+        return  # Exit the function if the book is unknown
 
-    total_tokens += knows[1]
+    total_tokens += knows[1]  # Add tokens used for this query to total
 
     # NEW: Question about translating the book
     can_translate = ask_chat(
@@ -101,9 +110,9 @@ def main():
     )
     if "no" in can_translate[0].lower():
         print(f"There is a copyright issue with the book “{book_title}”. Exiting.")
-        return
+        return  # Exit if summarization is not allowed
 
-    total_tokens += can_translate[1]
+    total_tokens += can_translate[1]  # Add tokens used for this query to total
 
     # 4. Request the number of chapters (emphasized: only a number, no additional text)
     reply = ask_chat(
@@ -111,12 +120,16 @@ def main():
         f"How many chapters are in the book “{book_title}”? Please respond **only** with a whole number (e.g., 24), without additional text.",
     )
     # Extract the first number from the response
-    m = re.search(r"\d+", reply[0])
+    m = re.search(
+        r"\d+", reply[0]
+    )  # Use regex to find the first number in the response
     if not m:
         # If no number is found – raise an error
         raise ValueError(f"No chapter count found in the response: {reply!r}")
-    chapter_count = int(m.group())
-    print(f"{f"Found "}{chapter_count}{f" chapters."}")
+    chapter_count = int(m.group())  # Convert the found number to an integer
+    print(
+        f"{f"Found "}{chapter_count}{f" chapters."}"
+    )  # Print the number of chapters found
 
     # 5. Summarize each chapter
     summaries = (
